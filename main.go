@@ -9,56 +9,62 @@ import (
 	"sync"
 )
 
-type Book struct {
-	ID    int    `json:"id"`
-	Title string `json:"title"`
+type Person struct {
+	Id   int    `json:"id"`
+	Name string `json:"name"`
+	Age  int    `json:"age"`
+}
+
+type PersonUpdate struct {
+	Name *string `json:"name"`
+	Age  *int    `json:"age"`
 }
 
 var (
-	books  = []Book{}
-	nextID = 1
-	mu     sync.Mutex
+	persons = []*Person{}
+	nextId  = 1
+	mu      sync.Mutex
 )
 
 func main() {
-	http.HandleFunc("/books", booksHandler)
-	http.HandleFunc("/books/", bookHandler) // для get/put/delete по ID
 
-	fmt.Println("Server running on http://localhost:8080")
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	http.HandleFunc("/persons", PersonsHandler)
+	http.HandleFunc("/persons/", PersonHandler)
+
+	fmt.Println("Server running on http://localhost:8081")
+	log.Fatal(http.ListenAndServe(":8081", nil))
+
 }
 
-// GET /books, POST /books
-func booksHandler(w http.ResponseWriter, r *http.Request) {
+func PersonsHandler(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
-		json.NewEncoder(w).Encode(books)
+		json.NewEncoder(w).Encode(persons)
 
 	case http.MethodPost:
-		var book Book
-		if err := json.NewDecoder(r.Body).Decode(&book); err != nil {
-			http.Error(w, "Invalid body", http.StatusBadRequest)
+		var person Person
+		if err := json.NewDecoder(r.Body).Decode(&person); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 		mu.Lock()
-		book.ID = nextID
-		nextID++
-		books = append(books, book)
+		person.Id = nextId
+		nextId++
+		persons = append(persons, &person)
 		mu.Unlock()
 		w.WriteHeader(http.StatusCreated)
-		json.NewEncoder(w).Encode(book)
+		json.NewEncoder(w).Encode(person)
 
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}
 }
 
-// GET/PUT/DELETE /books/{id}
-func bookHandler(w http.ResponseWriter, r *http.Request) {
-	idStr := r.URL.Path[len("/books/"):]
+func PersonHandler(w http.ResponseWriter, r *http.Request) {
+	idStr := r.URL.Path[len("/persons/"):]
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
-		http.Error(w, "Invalid ID", http.StatusBadRequest)
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -67,33 +73,37 @@ func bookHandler(w http.ResponseWriter, r *http.Request) {
 
 	switch r.Method {
 	case http.MethodGet:
-		for _, b := range books {
-			if b.ID == id {
-				json.NewEncoder(w).Encode(b)
+		for _, person := range persons {
+			if person.Id == id {
+				json.NewEncoder(w).Encode(person)
 				return
 			}
 		}
-		http.NotFound(w, r)
 
-	case http.MethodPut:
-		var updated Book
+	case http.MethodPatch:
+		var updated PersonUpdate
 		if err := json.NewDecoder(r.Body).Decode(&updated); err != nil {
-			http.Error(w, "Invalid body", http.StatusBadRequest)
+			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		for i, b := range books {
-			if b.ID == id {
-				books[i].Title = updated.Title
-				json.NewEncoder(w).Encode(books[i])
+		for _, p := range persons {
+			if p.Id == id {
+				if updated.Name != nil {
+					p.Name = *updated.Name
+				}
+				if updated.Age != nil {
+					p.Age = *updated.Age
+				}
+				json.NewEncoder(w).Encode(p)
 				return
 			}
 		}
 		http.NotFound(w, r)
 
 	case http.MethodDelete:
-		for i, b := range books {
-			if b.ID == id {
-				books = append(books[:i], books[i+1:]...)
+		for i, person := range persons {
+			if person.Id == id {
+				persons = append(persons[:i], persons[i+1:]...)
 				w.WriteHeader(http.StatusNoContent)
 				return
 			}
